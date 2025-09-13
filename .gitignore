@@ -6,4 +6,5 @@ build/
 .gradle/
 user.gradle
 local.properties
+release-key.jks
 *.iml
