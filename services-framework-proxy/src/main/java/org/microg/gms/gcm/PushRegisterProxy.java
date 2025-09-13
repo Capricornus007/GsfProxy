@@ -1,24 +1,20 @@
 /*
- * SPDX-FileCopyrightText: 2013 microG Project Team
+ * SPDX-FileCopyrightText: 2013-2025 microG Project Team
  * SPDX-License-Identifier: Apache-2.0
  */
 
 package org.microg.gms.gcm;
 
-import android.app.IntentService;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
 
-public class PushRegisterProxy extends IntentService {
-    private static final String TAG = "GsfGcmRegisterProxy";
-
-    public PushRegisterProxy() {
-        super(TAG);
-    }
+public class PushRegisterProxy extends BroadcastReceiver {
 
     @Override
-    protected void onHandleIntent(Intent intent) {
+    public void onReceive(Context context, Intent intent) {
+        if (context == null || intent == null) return;
         intent.setPackage("com.google.android.gms");
-        startService(intent);
-        stopSelf();
+        context.startService(intent);
     }
 }
