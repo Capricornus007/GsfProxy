@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2014 microG Project Team
+ * SPDX-FileCopyrightText: 2014-2025 microG Project Team
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -7,19 +7,18 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.google.android.gsf"
-    compileSdkVersion androidCompileSdk
-    buildToolsVersion "$androidBuildVersionTools"
+    compileSdk androidCompileSdk
 
     defaultConfig {
+        minSdk androidMinSdk
+        targetSdk androidTargetSdk
         versionName version
         versionCode appVersionCode
-        minSdkVersion androidMinSdk
-        targetSdkVersion androidTargetSdk
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
