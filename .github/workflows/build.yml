@@ -5,60 +5,85 @@ name: Release CI
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [ main, master, saeeddev94 ]
+    tags: [ '*' ]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEY_STORE_FILE != '' }}
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Get Version Code
         run: |
           VERSION_CODE=$(grep -oP "appVersionCode\s*=?\s*\K\d+" ${{ github.workspace }}/build.gradle)
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
 
-      - name: Create release key
-        run: |
-          KEY_STORE_TXT="${{ github.workspace }}/release-key.txt"
-          KEY_STORE_JKS="${{ github.workspace }}/release-key.jks"
-          echo "KEY_STORE_TXT=$KEY_STORE_TXT" >> $GITHUB_ENV
-          echo "KEY_STORE_JKS=$KEY_STORE_JKS" >> $GITHUB_ENV
-          echo "${{ secrets.KEY_STORE_FILE }}" > "$KEY_STORE_TXT"
-          base64 --decode "$KEY_STORE_TXT" > "$KEY_STORE_JKS"
-
-      - name: JDK 17 Setup
-        uses: actions/setup-java@v4.7.1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
-      - name: Gradle Build
+      - name: Create release key (from secrets when available)
+        if: env.HAS_KEYSTORE == 'true'
         run: |
-          KEY_STORE_PASSWORD='${{ secrets.KEY_STORE_PASSWORD }}' \
-          KEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
-          KEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
-          ./gradlew assembleRelease
+          KEY_STORE_JKS="${{ github.workspace }}/release-key.jks"
+          echo "${{ secrets.KEY_STORE_FILE }}" > release-key.txt
+          base64 --decode release-key.txt > "$KEY_STORE_JKS"
+          echo "KEY_STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+
+      # fork 沒有簽名 secret 時自生一組 release key（自簽名，功能與官方 release 完全相同）
+      - name: Create release key (self-signed fallback for forks)
+        if: env.HAS_KEYSTORE != 'true'
+        run: |
+          keytool -genkeypair -v \
+            -keystore "${{ github.workspace }}/release-key.jks" \
+            -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=GsfProxy Fork Build, OU=CI, O=Capricornus007, L=NA, ST=NA, C=TW" >/dev/null
+          echo "KEY_STORE_PASSWORD=android" >> $GITHUB_ENV
+          echo "KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+
+      - name: Gradle Build
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Remove release key
-        run: rm "${{ env.KEY_STORE_TXT }}" "${{ env.KEY_STORE_JKS }}"
+        if: always()
+        run: rm -f "${{ github.workspace }}/release-key.txt" "${{ github.workspace }}/release-key.jks"
 
-      - name: Move build to dist
+      - name: Rename APK
         run: |
           BUILD="${{ github.workspace }}/services-framework-proxy/build/outputs/apk/release/services-framework-proxy-release.apk"
           DIST="${{ github.workspace }}/services-framework-proxy/release"
-          NAME="GsfProxy-$GITHUB_REF_NAME.apk"
-          mkdir "$DIST"
+          SAFE_REF=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
+          NAME="GsfProxy-${SAFE_REF}.apk"
+          mkdir -p "$DIST"
           mv "$BUILD" "$DIST/$NAME"
           echo "DIST=$DIST" >> $GITHUB_ENV
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v1
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gsfproxy-release-${{ github.sha }}
+          path: ${{ env.DIST }}/*.apk
+          retention-days: 30
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
